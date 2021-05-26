@@ -1,3 +1,8 @@
+## 使用方式
+iptables -A PREROUTING -t nat -d 192.168.7.1 -j ACCEPT
+iptables -A PREROUTING -t nat -p tcp --dport 1:65535 -j REDIRECT --to-ports 1082
+
+## 一些测试如下:
 
 iptables -A PREROUTING -t nat -d 192.168.7.1 -j ACCEPT
 ```result
@@ -6,7 +11,7 @@ Chain PREROUTING (policy ACCEPT)
 target     prot opt source               destination         
 ACCEPT     all  --  anywhere             ka-Y470 
 ```
-## or use ! -d to except one ip
+### or use ! -d to except one ip
 iptables -A PREROUTING -t nat -p tcp '!' -d 192.168.31.109/24 --dport 1:65535 -j REDIRECT --to-ports 1082
 
 
