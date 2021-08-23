@@ -2,7 +2,7 @@ import codecs
 from setuptools import setup
 
 
-with codecs.open('README.rst', encoding='utf-8') as f:
+with codecs.open('README.md', encoding='utf-8') as f:
     long_description = f.read()
 
 setup(
@@ -13,7 +13,7 @@ setup(
     author='clowwindy',
     author_email='clowwindy42@gmail.com',
     url='https://github.com/shadowsocks/shadowsocks',
-    packages=['ptshadowsocks', 'ptshadowsocks.crypto'],
+    packages=['ptshadowsocks', 'ptshadowsocks.cryptolib', 'ptshadowsocks.libs', 'ptshadowsocks.protocol'],
     package_data={
         'ptshadowsocks': ['README.rst', 'LICENSE']
     },

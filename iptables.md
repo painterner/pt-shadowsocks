@@ -1,6 +1,8 @@
 ## 使用方式
 iptables -A PREROUTING -t nat -d 192.168.7.1 -j ACCEPT
 iptables -A PREROUTING -t nat -p tcp --dport 1:65535 -j REDIRECT --to-ports 1082
+iptables -A PREROUTING -t nat -p udp --dport 1:65535 -j REDIRECT --to-ports 1082
+
 
 ## 一些测试如下:
 
@@ -24,7 +26,7 @@ REDIRECT   tcp  --  anywhere             anywhere             tcp dpts:tcpmux:65
 
 
 
-
+### Extra tests
 iptables -A PREROUTING -t nat -i enp7s0 -p tcp --dport 1:65535 -j DNAT --to-destination 127.0.0.1:1082
 
 ```result

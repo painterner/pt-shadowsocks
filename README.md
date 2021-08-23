@@ -11,10 +11,18 @@
 
 
 ## start
+Machine B:
 python3 main.py --local
 python3 main.py --server --port 1092
 
 python3 sockserver.py
+python3 servers/https-server.py (listen data from netcard, then convert to socks protocol)
+python3 servers/udp-server.py (listen data from netcard by udp, then convert to socks protocol, uncompleted)
+
+Deploy iptables according to iptables.md
+
+Machine A:
+curl www.baidu.com -v
 
 ### test1
 python3 request.py
@@ -42,7 +50,6 @@ python3 py-https-proxy.py
 
 todo:
 nodejs 建立httpSever proxy（这样就不用使用python的select来处理麻烦的多用户io map问题了)
-
 
 ## 可能出现问题
 1. 如果服务器根据http的header中的host来cros或者路由(不可能路由,因为客户端一般在内网).那么有可能日后需要更改host ?

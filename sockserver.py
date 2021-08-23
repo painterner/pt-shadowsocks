@@ -4,7 +4,7 @@ import threading
 s = socket.socket()
 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
-sAddr = ('127.0.0.1', 8001)
+sAddr = ('0.0.0.0', 8001)
 
 s.bind(sAddr)
 
