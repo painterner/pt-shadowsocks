@@ -5,6 +5,7 @@ from typing import Any
 import asyncio
 import traceback
 import ssl
+import time
 from ptshadowsocks.libs.asyncSocket import AsyncSocket
 from ptshadowsocks.eventloop import EventLoop, POLL_IN, POLL_ERR
 
@@ -50,19 +51,28 @@ import threading
 
 
 class Th():
-    def __init__(self, rSock,cSock):
+    def __init__(self, rSock, cSock):
         self.rSock = rSock
         self.cSock = cSock
-    def run_backward(self):
+    def run_backward(self, sock, fd, event):
         rSock = self.rSock
         try:
             result = rSock.recv(64*1024)
             print("received length", len(result))
             if(not result):
+                print("received length is 0, so close it")
+                rSock.close()
+                self.cSock.close()
                 return
             self.cSock.send(result)
+            print("sent", self.cSock)
+            # self.cSock.close()  # todo: 根据event来检测然后自动关闭?
         except:
-            print("closed")
+            print("exception run_backward")
+            # self.cSock.close()
+            # self.rSock.close()
+        finally:
+            return
 
 
 def RemoteServer(cSock, host,port):
@@ -73,7 +83,7 @@ def RemoteServer(cSock, host,port):
     return rSock
 
 class Server():
-    def __init__(self, sock):
+    def __init__(self, sock: socket.socket):
         super().__init__()
         self.sock = sock
         loop.add(self.sock, POLL_IN, self)
@@ -91,11 +101,17 @@ class Server():
             print("accepted",connect[0], connect[1])
 
             rSock = RemoteServer(connect[0], o_addr, port)
+
+            # rSock = connectToProxy((o_addr, port))
             try:
                 data = connect[0].recv(1024)
+                print("data", data)
                 rSock.send(data)
 
-                # connect[0].send(b'ok')
+                # result = rSock.recv(64*1024)
+
+                # connect[0].send(result)
+                print("done")
             except:
                 print("closed", connect[1])
 

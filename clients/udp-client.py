@@ -16,22 +16,13 @@ def main():
         
     eventloop = EventLoop()
     sock = socket.socket(type=socket.SOCK_DGRAM)
-    sock.bind(('0.0.0.0', 1082))
-    sock.setsockopt(socket.SOL_IP, socket.IP_RECVDSTADDR, 1)
+    sock.bind(('0.0.0.0', 1085))
 
-    # while True:
-    #     try: 
-
-    data, msg, *retu= sock.recvmsg(64*1024)
-    print("data other", retu)
-    print("data", data, msg)
-    for m in msg:
-        print("mmm", m)
-
-            # c = AsyncSocket(connect[0], callback, eventloop)
-            # break
-        # except:
-        #     pass
+    connect = sock.sendto(b'ehll', ('127.0.0.1', 1082))
+    print("accepted")
+    data, addr = sock.recvfrom(64*1024)
+    print("received")
+    # c = AsyncSocket(connect[0], callback, eventloop)
 
     # c = AsyncSocket(sock, callback, eventloop)
 

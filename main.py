@@ -70,7 +70,8 @@ if __name__ == "__main__":
     parser.add_argument('--port', type=int, default=1081)
     parser.add_argument('--relay_port', type=int, default=1092)
     parser.add_argument('--timeout', type=int, default=300)  # seconds
-    parser.add_argument('-v', '--VERBOSE_LEVEL', type=int, default=0)  # seconds
+    parser.add_argument('-v', '--VERBOSE', action='store_true')  # verbose
+    parser.add_argument('--log', type=int, default=0)  # log level, unimplemented
     args = parser.parse_args()  # type of Namespace()
     for k in vars(args):
         env[k] = getattr(args, k)

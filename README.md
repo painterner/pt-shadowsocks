@@ -1,3 +1,6 @@
+## 其他执行参考:
+search: python/tproxy, tproxy
+
 ## 重写代码目的:为了任意代码语言的执行， 所以记录。
 1. 找到一个方法能够获得任意语言的socket的数据状态的方法(以决定POLL_IN, POLL_OUT)
 
@@ -12,14 +15,20 @@
 
 ## start
 Machine B:
-python3 main.py --local
-python3 main.py --server --port 1092
+```bash
+python3 main.py --local -v 
+python3 main.py --server --port 1092 -v
 
-python3 sockserver.py
-python3 servers/https-server.py (listen data from netcard, then convert to socks protocol)
-python3 servers/udp-server.py (listen data from netcard by udp, then convert to socks protocol, uncompleted)
+python3 sockserver.py  # 或者使用 python3 sockserver-close.py(传输一次即close的测试)
+python3 servers/https-server.py #(listen data from netcard, then convert to socks protocol)
+python3 servers/udp-server.py #(listen data from netcard by udp, then convert to socks protocol, uncompleted)
+```
 
-Deploy iptables according to iptables.md
+* Open Port forward (否则 iptables的配置不起作用)
+>  
+  vim /etc/systctl.conf  
+  sudo sysctl -p
+* Deploy iptables according to `iptables.md`
 
 Machine A:
 curl www.baidu.com -v

@@ -1,5 +1,6 @@
 import json
 import logging as gLogging
+from build.lib.ptshadowsocks.eventloop import POLL_NVAL
 from ptshadowsocks.eventloop import EventLoop, POLL_IN, POLL_OUT, POLL_HUP, POLL_ERR
 from ptshadowsocks.dnsresolver import dnsresolver
 import socket
@@ -16,6 +17,7 @@ import ptshadowsocks.eventloop as eventloop
 import ptshadowsocks.globalvar as globalvar
 from ptshadowsocks.globalvar import get_env
 from ptshadowsocks.protocol.socks5 import socks5_handle
+from ptshadowsocks.utils import *
 
 #  todo: 如何建立一个层级logging, 比如一个父logging控制所有子logging, 子logging可以有自己的级别， 
 #  但是父logging可以控制总体级别的开关。
@@ -25,6 +27,8 @@ from ptshadowsocks.protocol.socks5 import socks5_handle
 gLogging.getLogger(__name__).setLevel(level=gLogging.DEBUG)
 # gLogging.getLogger().setLevel(level=gLogging.DEBUG)
 logging = gLogging.getLogger(__name__)
+
+cLogging = CustomLog(logging)
 
 # errno.EAGAIN, errno.EINPROGRESS, errno.EWOULDBLOCK
 
@@ -72,7 +76,7 @@ def pack_length(length, lengthDest):
 # 理论： 类初始化不要传入过多的初始值， 那么关于类的位置移动到其他项目的问题如何解决？： 可以把这个类和全局变量池一块移动，
 # 实践起来说不定会更方便?
 class TCPRelayHandler ():
-    def __init__(self, sock, is_client, is_local, fd_handler, local_relay=None , context=None, eventloop=None, address=None):
+    def __init__(self, sock, is_client, is_local, fd_handler, local_relay=None , context=None, tcpRelay=None, address=None):
         """
         client: local machine
         server: vps
@@ -92,10 +96,12 @@ class TCPRelayHandler ():
         self.env = context['env'] if context != None else {"timeout": 300}
         self.is_relay = False
         self.fd_handler = fd_handler
-        self.eventloop : EventLoop = eventloop
+        self.tcpRelay = tcpRelay
+        self.env = tcpRelay.env
+        self.eventloop : EventLoop = tcpRelay.eventloop
         self.dest = {}
         self.meta = {}
-        self.singlePipe = True
+        self.singlePipe = False
         self.data_to_back = b''
         self.remote_relay = None
         self.local_relay = None
@@ -123,25 +129,33 @@ class TCPRelayHandler ():
 
             ## todo: change to add after dnsresolved
             if self.is_client:
-                source = '{}:{}'.format(self.address[0], self.address[1])
-                self.logging.debug(colored("add surce {}".format(source), "blue"))
-                source_dest_map[source] = self
+                # source = '{}:{}'.format(self.address[0], self.address[1])
+                # self.logging.debug(colored("add surce {}".format(source), "yellow"))
+                # source_dest_map[source] = self
 
-                self.remote_sock = globalvar.relay_sock
-                global inited_relay_remote
-                if( not inited_relay_remote):
-                    self.remote_relay = TCPRelayHandler(self.remote_sock, self.is_client, False, self.fd_handler, local_relay=self, eventloop=self.eventloop)
-                    inited_relay_remote = True
+                if self.singlePipe:
+                    self.remote_sock = globalvar.relay_sock
+                    global inited_relay_remote
+                    if( not inited_relay_remote):
+                        self.remote_relay = TCPRelayHandler(self.remote_sock, self.is_client, False, self.fd_handler, local_relay=self, tcpRelay=self.tcpRelay)
+                        inited_relay_remote = True
+                else:
+                    relay_sock = socket.socket()
+                    relay_sock.connect(('127.0.0.1', self.env['relay_port']))
+                    self.remote_sock = relay_sock
+                    self.remote_relay = TCPRelayHandler(self.remote_sock, self.is_client, False, self.fd_handler, local_relay=self, tcpRelay=self.tcpRelay)
+                     
+
             else:
                 self.remote_sock = socket.socket()
                 # self.remote_sock.setblocking(False)
                 # self.remote_sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, 1)
 
-            if not self.singlePipe:
-                print("remote_sock", self.remote_sock)
-                self.remote_relay = TCPRelayHandler(self.remote_sock, self.is_client, False, self.fd_handler, local_relay=self, eventloop=self.eventloop)
-                self.eventloop = eventloop
-                #  todo: 采用shadowsocks的方式，self.server, 以减少出错率。
+            # if not self.singlePipe:
+            #     print("remote_sock", self.remote_sock)
+            #     self.remote_relay = TCPRelayHandler(self.remote_sock, self.is_client, False, self.fd_handler, local_relay=self, tcpRelay=self.tcpRelay)
+            #     self.eventloop = eventloop
+            #     #  todo: 采用shadowsocks的方式，self.server, 以减少出错率。
 
             # self.eventloop.add(self.remote_sock, POLL_IN | POLL_ERR, self.remote_relay)
         else:
@@ -154,11 +168,16 @@ class TCPRelayHandler ():
     @property
     def logging(self):
         l = gLogging.getLogger(self.logging_name)
-        if(get_env()['VERBOSE_LEVEL']):
+        if(get_env()['VERBOSE']):
             l.setLevel(level=gLogging.DEBUG)
         else:
             l.setLevel(level=gLogging.INFO)
         return l
+    
+    @property
+    def cLogging(self):
+        cLogging.setLogging(self.logging)
+        return cLogging
 
     @logging.setter
     def logging(self,v):
@@ -197,7 +216,9 @@ class TCPRelayHandler ():
             self.logging.info('connect to remote error: {}'.format(e))
             self.close()
 
+    #  only occur in client point
     def encrypto(self):
+        self.cLogging.enterFunc("Enter func:encrypto")
         # self.logging.debug(colored('start encrypto', "blue"))
         meta = {
             "addr": self.dest['addr'],
@@ -205,13 +226,21 @@ class TCPRelayHandler ():
             "srcAddr": self.address[0],
             "srcPort": self.address[1]
         }
+        source = "{}:{}".format(meta["srcAddr"], meta["srcPort"])
+        target = "{}:{}".format(meta["addr"], meta["port"])
+        key = source + "<-->" + target
+        if not source_dest_map.get(key):
+            self.logging.debug(colored("Add map: {}".format(key), "yellow"))
+            source_dest_map[key] = self
+
         metaJsonBytes = bytes(json.dumps(meta), "utf-8")
         self.meta["bytes"] = metaJsonBytes
         self.data_to_send = metaJsonBytes + self.data_to_send
-        self.logging.debug("self.data_to_send", self.data_to_send)
+        self.logging.debug(clSprintf("self.data_to_send", self.data_to_send))
         self.data_to_send = self.crypto.encrypt(self.data_to_send)
-        self.logging.debug('encrtyto done, result:')
+        self.logging.debug(clSprintf('encrtyto done'))
 
+    #  only occur in server point
     def encryptoBack(self, data):
         metaJsonBytes=self.meta["bytes"]
         data = metaJsonBytes + data
@@ -219,6 +248,7 @@ class TCPRelayHandler ():
         # self.logging.debug(colored("entrypto for send back: {}".format(data), "blue"))
         return data
 
+    # only occur in client point
     def decryptoSendBack(self):
         length,lengthDest = unpack_length(self.data_to_back)
         self.logging.debug(colored(" length: content {}, meta {}".format(length, lengthDest), 'green'))
@@ -242,7 +272,9 @@ class TCPRelayHandler ():
             target = "{}:{}".format(addr, port)
             self.logging.debug(colored('send back, source: {}'.format(source), 'green'))
 
-            handler = source_dest_map[source]
+            key = source + "<-->" + target
+            #  todo: 移除这个字典，仅仅用self.sock应该就足够了，因为map在TcpRelay中就已经做了
+            handler = source_dest_map[key]
             handler.sock.send(content)
 
             if(len(self.data_to_send) == length):
@@ -250,6 +282,7 @@ class TCPRelayHandler ():
             else:
                 self.data_to_back = self.data_to_back[length:]
 
+    # only occur in server point
     def decryptoSend(self):
         length,lengthDest = unpack_length(self.data_to_send)
         self.logging.debug(colored(" length: content {}, meta {}".format(length, lengthDest), 'green'))
@@ -258,7 +291,7 @@ class TCPRelayHandler ():
         data = self.data_to_send[LENGTH_LENGTH+META_LENGTH_LENGTH:length]
         self.logging.debug('start decrypt', data)
         data = self.crypto.decrypt(data)
-        self.logging.debug('end decrypt')
+        self.logging.debug(clSprintf('end decrypt'))
 
         if data and not self.is_client:
             metaBytes = data[0:lengthDest]
@@ -275,17 +308,18 @@ class TCPRelayHandler ():
 
             # 时间上并没有用到?
             key = source+'<-->'+target
+            self.logging.debug(clSprintf("Add to source_dest_map {}", key))
             tmp_handler = source_dest_map.get(key)             
             if(tmp_handler):
                 self.remote_sock = tmp_handler.sock
             else:
                 # ... 如果所有数据到server的同一个端口，需要分别建立socket和Handler
                 
-                if self.singlePipe:
-                    self.remote_sock = socket.socket() 
-                    handler = TCPRelayHandler(self.remote_sock, self.is_client, False, self.fd_handler, local_relay=self, eventloop=self.eventloop)
-                    source_dest_map[key] = handler
-                    handler.meta = copy.deepcopy(self.meta)
+                # if self.singlePipe:
+                self.remote_sock = socket.socket() 
+                handler = TCPRelayHandler(self.remote_sock, self.is_client, False, self.fd_handler, local_relay=self, tcpRelay=self.tcpRelay)
+                source_dest_map[key] = handler
+                handler.meta = copy.deepcopy(self.meta)
                     
                 # ...
 
@@ -303,6 +337,7 @@ class TCPRelayHandler ():
                 self.data_to_send = self.data_to_send[length:]
 
     def update_stream(self):
+        logging.debug(colored("Enter func:update_stream", "blue"))
         if self.is_client:
             if self.is_local:
                 self.encrypto()
@@ -334,7 +369,7 @@ class TCPRelayHandler ():
     def handle_event(self, sock: socket.socket, fd, event):
         self.last_activity = time.time()
 
-        self.logging.debug("sock status: event {}, stage {}, {}, {}, {}".format(event, self.stage, sock==self.sock, self.is_local, self.is_remote))
+        self.logging.debug("sock status: event {}, stage {}, socks5 {}".format(event, self.stage, self.use_protocol_socks5))
 
         if self.is_relay: 
             raise Exception('Unimplemented') 
@@ -343,128 +378,6 @@ class TCPRelayHandler ():
             socks5_handle(self, sock, fd, event)
             return           
 
-        if self.is_client:
-
-            if event & POLL_ERR:
-                self.logging.error(colored("POLL_ERROR", "red"))
-                self.close()
-                return
-
-            if(event &  POLL_HUP):
-                self.logging.error("POLL_HUP")
-                return
-
-            if self.is_local and self.stage == STAGE_INIT:
-                data = sock.recv(10)
-                # received: b'\x05\x02\x00\x01'
-                self.logging.debug(colored("init stage {}".format(data), 'blue'))
-                self.stage = STAGE_ADDR
-                # sock.send(b'\x00\x00\x05\x01')
-                sock.send(b'\x05\x00')
-                
-                return
-            if self.is_local and self.stage == STAGE_ADDR:
-                self.logging.debug(colored("addr stage", 'blue'))
-                self.data_to_send = b''
-                data = sock.recv(100)
-                self.logging.debug(colored("received: {}".format(data), 'blue'))
-                addr  = json.loads(data.decode('utf-8'))
-                self.dest['port'] = addr[1]
-                self.logging.debug(colored("will resolve host {} ( port: {})".format(addr[0],addr[1]), 'blue'))
-                
-                dnsresolver.resolve(addr[0], self.dnsresolver_callback) 
-                return       
-            if self.is_local and self.stage == STAGE_CONNECT:
-                print('connectiong, but get unexpected data, ignore ?')
-                return
-            if self.is_local and self.stage == STAGE_STREAM:
-                self.logging.debug(colored("stream stage", 'blue'))
-                data = sock.recv(1024*64)
-                if not data:
-                    # todo, if not data, close connection ?
-                    self.logging.error("local recieved empty data, to close it")
-                    self.close()
-                    return 
-
-                self.data_to_send += data
-                self.update_stream()
-                return
-
-            if self.is_remote:
-                data = sock.recv(1024*64)
-                self.logging.debug(colored("step backward 1, data: {}".format(data), 'blue'))
-                self.data_to_back += data
-                self.decryptoSendBack() # send to client user
-
-        else: 
-            if self.is_local and self.stage == STAGE_INIT:
-                self.logging.debug(colored("init stage, event: {}".format(event), 'blue'))
-                if event & POLL_ERR:
-                    self.logging.error(colored("POLL_ERROR", "red"))
-                    return
-
-                # print('event', event)
-                # while True:
-                #     print(sock.recv(10))
-                # self.stage = STAGE_ADDR
-                self.stage = STAGE_STREAM
-                # self.stage = STAGE_INIT
-                # dnsresolver.resolve(sock, self.dnsresolver_callback)
-
-                self.data_to_send = b''
-                return 
-            if self.is_local and self.stage == STAGE_STREAM:
-                self.logging.debug(colored("stream stage, event: {}".format(event), 'blue'))
-                # self.data_to_send += data
-                # self.update_stream()
-                self.stage = STAGE_STREAM
-
-                if event & POLL_ERR:
-                    # logging.error(colored("POLL_ERROR", "red"))
-                    self.logging.error("POLL_ERROR")
-                    return
-
-                if(event & (POLL_IN | POLL_HUP)):
-                    data = sock.recv(1024*64)
-                    print("received:", data)
-                    if not data:
-                        # 如果single pipe, 只有可能是client 断开连接了? 所以需要关闭 ?
-                        self.logging.error("local recieved empty data, to close it")
-                        self.close()
-                        return
-
-                    self.data_to_send += data
-                    self.update_stream()
-                    # todo, if POLL_HUP, it represent client is closed ?
-                    return
-
-                return
-
-            if self.is_remote:
-                if event & POLL_ERR:
-                    # logging.error(colored("POLL_ERROR", "red"))
-                    self.logging.error("POLL_ERROR")
-                    return
-
-                if(event & (POLL_IN)):
-                    data = sock.recv(1024*64)
-                    if not data:
-                        self.logging.error("remote recieved empty data, to close it")
-                        self.close()
-                        return 
-                    self.logging.debug(colored("received from destination: {}".format(data), "green"))
-                    self.update_back_stream(data)
-                    return
-
-                if(event & (POLL_HUP)):
-                    # The reason for this event:
-                    # 1. create this socket, but not connected to server
-                    return
-
-                # logging.debug(colored("me: server, send to client, data: {}".format(self.data), 'blue'))
-                # data = crypto.encrypt(data)
-                # self.local_relay.sock.send(data) # to do, 能否把sock.send用local_relay.send代理 ?
-                return
 
     def handle_periodic(self):
         now = time.time()
@@ -487,7 +400,9 @@ class TCPRelayHandler ():
         traceback.print_stack()
 
         self.eventloop.remove(self.sock)
+        # if not (self.is_client and self.is_remote):
         self.sock.close()
+
         self.closed = True
         # self.fd_handler.remove(self.sock)
         if self.remote_relay and not self.remote_relay.closed:
@@ -495,12 +410,18 @@ class TCPRelayHandler ():
                 self.logging.error("close: close remote_relay")
                 self.remote_relay.close()
 
+        if self.local_relay and not self.local_relay.closed:
+            # todo: local ==> remote 是一对多的关系，所以增加一个 计数器， 仅仅当计数器为0的时候才执行 self.sock.close()
+            self.local_relay.close()
+
         if self.is_server:
             if self.is_local:
                 for key in source_dest_map:
                     self.logging.error("close: close source_dest_map")
                     handler = source_dest_map[key]
-                    handler.close()
+                    if handler and not handler.closed:
+                        handler.close()
+                
 
         if not self.is_remote:
             if self.local_relay and not self.local_relay.closed:
@@ -508,6 +429,8 @@ class TCPRelayHandler ():
                 self.local_relay.close()
 
         self.logging.info(colored("closed handler {}".format(self), "red"))
+
+        # todo: 依赖语言自动回收的话仍然会有残留？所以还是使用map+一个handle更合理?
         del self
 
 class TCPRelay():
@@ -535,7 +458,7 @@ class TCPRelay():
     def handle_event(self, sock, fd, event):
         # handle events and dispatch to handlers
         if sock:
-            logging.log(self.env['VERBOSE_LEVEL'], 'fd %d %s', fd,
+            logging.log(self.env['VERBOSE'], 'fd %d %s', fd,
                         eventloop.EVENT_NAMES.get(event, event))
         if sock == self.listen_socket:
             if event & eventloop.POLL_ERR:
@@ -546,7 +469,7 @@ class TCPRelay():
                 conn = self.listen_socket.accept()
                 logging.info('acceptted {}, {}'.format(conn[1], conn[0]))
                 TCPRelayHandler(conn[0], self.is_client, True, self.fd_handler,
-                                eventloop=self.eventloop,
+                                tcpRelay=self,
                                 address=conn[1]
                                 )
             except (OSError, IOError) as e:

@@ -96,6 +96,9 @@ def socks5_handle(self, sock, fd, event):
 
         if self.is_remote:
             data = sock.recv(1024*64)
+            if not data:
+                self.close()
+                return
             self.logging.debug(colored("step backward 1, data: {}".format(data), 'blue'))
             self.data_to_back += data
             self.decryptoSendBack() # send to client user
@@ -150,8 +153,10 @@ def socks5_handle(self, sock, fd, event):
                 return
 
             if(event & (POLL_HUP)):
-                    # The reason for this event:
+                # The reason for this event:
                 # 1. create this socket, but not connected to server
+                self.logging.debug(colored("POLL_HUP => Close", "red"))
+                self.close()
                 return
 
             if(event & (POLL_IN)):
