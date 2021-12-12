@@ -7,6 +7,9 @@ sudo iptables -A PREROUTING -t nat -p tcp --dport 1:65535 -j REDIRECT --to-ports
 sudo iptables -A PREROUTING -t nat -p udp --dport 1:65535 -j REDIRECT --to-ports 1082
 ```
 
+## 非严格模式
+case1, 如果只需要proxy tcp, 那么可以用iptables转发所有的udp.
+
 ## 一些测试如下:
 
 iptables -A PREROUTING -t nat -d 192.168.7.1 -j ACCEPT

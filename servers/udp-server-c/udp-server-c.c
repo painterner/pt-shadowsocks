@@ -176,7 +176,7 @@ void *recv_msg(void *arg)
 		if (sorgin == NULL) {
 			fprintf(stderr, "No cmsghdr received.\n");
 			continue;
-		}else {
+		} else {
 			printf("cmsg parsed: [%s:%d]\n", inet_ntoa(sorgin->sin_addr), ntohs(sorgin->sin_port));
 		}
 

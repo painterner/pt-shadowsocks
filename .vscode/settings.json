@@ -1,4 +1,8 @@
 {
     "python.pythonPath": "/usr/bin/python3.6",
-    "C_Cpp.errorSquiggles": "Disabled"
+    "C_Cpp.errorSquiggles": "Disabled",
+    "files.associations": {
+        "string": "cpp",
+        "sstream": "cpp"
+    }
 }

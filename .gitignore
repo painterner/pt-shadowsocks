@@ -2,3 +2,6 @@
 /dist
 /build
 __pycache__
+
+servers/udp-server-c/udp
+servers/udp-server-c/udp-server.so
