@@ -128,6 +128,7 @@ public:
 				pcmsgh->cmsg_type == IP_RECVORIGDSTADDR)
 			{
 				sorgin = (struct sockaddr_in *)CMSG_DATA(pcmsgh);
+				printf("searched pcmsgh\n");
 			}
 		}
 
@@ -148,6 +149,8 @@ public:
 			const char* bufTemp = reinterpret_cast<const char*>(buf);
 			j["payload"] = bufTemp;
 		}
+
+		sorgin = NULL;
 
 		return 1;
 	}
@@ -178,7 +181,7 @@ extern "C"
 // 无法使用python只能调用c，而非c++, 所以需要在c++中声明 extern "C"
 
 // usage:
-// # g++   udp-server-c-lib.c++ -o udp-server.so -std=c++11 -shared -W -fPIC
+// # g++ udp-server-c-lib.c++ -o udp-server.so -std=c++11 -shared -W -fPIC
 
 // Test:
 // test_main => main, g++ udp-server-c-lib.c++ -o udp-server

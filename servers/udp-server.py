@@ -2,9 +2,10 @@ import ctypes
 import json
 import socket
 import struct
-from ptshadowsocks.eventloop import EventLoop
+from ptshadowsocks.eventloop import POLL_ERR, POLL_HUP, EventLoop
 from ptshadowsocks.libs.asyncSocket import AsyncSocket
 from ctypes import *
+import threading
 
 
 cyUdpServer = CDLL('./udp-server-c/udp-server.so')
@@ -51,6 +52,20 @@ eventloop = EventLoop()
 cyContext = cyUdpServer.context
 print(cyUdpServer.__dict__)
 
+class Th(threading.Thread):
+    def __init__(self, func):
+        super(Th, self).__init__()
+        self.func = func
+        self.stop = False
+    def run(self):
+        while True:
+            self.func()
+            if(self.stop):
+                break
+    def join(self):
+        self.stop = True
+
+
 def main_handle():
     cyUdpServer.recv_main.restype = ctypes.c_char_p
     data = cyUdpServer.recv_main()
@@ -60,16 +75,33 @@ def main_handle():
     print("received", data)
 
     def callback_handle(sock, fd, event):
+        if event & (POLL_ERR | POLL_HUP):
+            eventloop.remove(sock)
+            sock.close()
+            return
+
         data, addr = sock.recvfrom(64*1024)
         print("callback received", data)
+        if not data:
+            eventloop.remove(sock)
+            sock.close()
+            return
+
         sock.bind(addr)  # 模拟iptables的伪装, 如果是tcp的话，应该怎么伪装?
         sock.sendto(data, (data["host"], data["port"]))
         print("sent back done")
+
+    if(data['des_port'] == 1082):
+        print("Error: the destination shouldn't be self")
+        return
 
     rsock = socket.socket(type=socket.SOCK_DGRAM)
     AsyncSocket(rsock, callback_handle, eventloop)
     rsock.sendto(data["payload"].encode(), (data["des_host"], data["des_port"]))
 
-main_handle()
+th = Th(main_handle)
+th.start()
+
+# 多线程编程应该是可以接受的。因为可以设想系统中每一个serice都会占用一个线程，所以只要不是太多是无所谓的。
 
 eventloop.run()
