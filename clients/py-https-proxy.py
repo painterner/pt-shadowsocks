@@ -86,6 +86,7 @@ def DoubleServer():
     # rSock = connectToProxy(('www.baidu.com', 443)) # 使用baidu.com会302，重定向(location) www.baidu.com
     # 所以猜测baidu.com 和 www.baidu.com不是一个地址
     
+    # 需不需要wrap一个TLS是根据库的特性来定的，如果库可以根据https来分析出需要安全接近，那么就不需要自己传入ssl=true参数.
     rSock = ssl.wrap_socket(rSock, keyfile=None, certfile=None, server_side=False, cert_reqs=ssl.CERT_NONE, ssl_version=ssl.PROTOCOL_SSLv23)
     # rSock = connectToProxy(('localhost', 8001))
     # rSock = connectToProxy(('message.painterner.site', 80))
